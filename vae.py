@@ -6,13 +6,17 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
+from torch.utils.data import DataLoader
+from torchvision.datasets import ImageFolder
+
+from pretrained_model import get_pretrained_transform
 
 
 # https://vxlabs.com/2017/12/08/variational-autoencoder-in-pytorch-commented-and-annotated/
 
-CUDA = True
+CUDA = False
 SEED = 1
-BATCH_SIZE = 10
+BATCH_SIZE = 1
 LOG_INTERVAL = 10
 EPOCHS = 10
 
@@ -26,9 +30,25 @@ if CUDA:
 # DataLoader instances will load tensors directly input GPU memory
 kwargs = {'num_workers': 1, 'pin_memory': True} if CUDA else {}
 
+
+transform = get_pretrained_transform()
+
+dataset_params = {
+    'root': '~/datasets/open-images/train',
+    'transform': transform
+}
+
+dataloader_params = {
+    'batch_size': BATCH_SIZE,
+    'shuffle': True,
+    'num_workers': 1
+}
+
+dataset = ImageFolder(**dataset_params)
+
 # Load train data
 # shuffle at every epoch
-train_dataloader = None
+train_dataloader = DataLoader(dataset, **dataloader_params)
 
 
 # Load test data
@@ -181,7 +201,9 @@ def train(epoch):
     model.train()
     train_loss = 0
     for batch_idx, batch in enumerate(train_dataloader):
-        data = Variable(batch)
+        batch = batch[0]
+        # data = Variable(batch)
+        data = batch
         if CUDA:
             data = data.cuda()
         optimizer.zero_grad()
@@ -193,13 +215,13 @@ def train(epoch):
         # calculate the gradient of the loss w.r.t the graph leaves
         # i.e input variables
         loss.backward()
-        train_loss += loss.data[0]
+        train_loss += loss.item()
         optimizer.step()
         if batch_idx % LOG_INTERVAL == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:0.6f}'.format(
                 epoch, batch_idx * len(data), len(train_dataloader.dataset),
                 100. * batch_idx / len(train_dataloader),
-                loss.data[0] / len(data)
+                loss.item() / len(data)
             ))
             
     print('====> Epoch: {} Average loss: {:.4f}'.format(
@@ -207,6 +229,7 @@ def train(epoch):
     ))
 
 
+@torch.no_grad()
 def test(epoch):
     # toggle model to test/inference mode
     model.eval()
@@ -214,12 +237,13 @@ def test(epoch):
 
     # each data is of BATCH_SIZE samples
     for i, batch in enumerate(test_dataloader):
+        data = batch
         if CUDA:
             # make sure this lives on the GPU
             data = batch.cuda()
         
         # we're only going to infer, so no autograd at all required: volatile=True
-        data = Variable(data, volatile=True)
+        # data = Variable(data, volatile=True)
         recon_batch, mu, logvar = model(data)
         test_loss += loss_function(recon_batch, data, mu, logvar).data[0]
         if i == 0:
@@ -238,18 +262,19 @@ def test(epoch):
 
 for epoch in range(1, EPOCHS + 1):
     train(epoch)
-    test(epoch)
+    # test(epoch)
 
     # 64 sets of random ZDIMS-float vectors, i.e 64 locations
     # in latent space
-    sample = Variable(torch.randn(64, ZDIMS))
+    # sample = Variable(torch.randn(64, ZDIMS))
+    sample = torch.randn(64, ZDIMS)
     if CUDA:
         sample = sample.cuda()
     sample = model.decode(sample).cpu()
 
     # save out as an 8x8 matrix
     # this will give you a visual idea of how well latent space can generate things
-    save_image(sample.data.view(64, 3, 224, 224),
+    save_image(sample.view(64, 3, 224, 224),
                'results/samples/sample_' + str(epoch) + '.png')
 
 
