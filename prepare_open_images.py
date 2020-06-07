@@ -16,7 +16,7 @@ def compute_largest_area(image_id, label_data):
 
 
 def main():
-    cvs_path = '/home/stanislaw/datasets'
+    cvs_path = '/media/STORAGE/DATASETS/open-images/'
     class_ids_path = os.path.join(cvs_path, 'class-descriptions-boxable.csv')
     images_info_path = os.path.join(cvs_path, 'validation-annotations-bbox.csv')
 
@@ -44,7 +44,7 @@ def main():
         label_counts[label] += 1
 
     for label in tqdm(label_counts.keys()):
-        dir_path = os.path.join(cvs_path, 'open-images', label)
+        dir_path = os.path.join(cvs_path, 'train', label)
         try:
             os.makedirs(dir_path)
             # print('Created dir: {}'.format(dir_path))
@@ -54,7 +54,7 @@ def main():
     dir_from = os.path.join(cvs_path, 'validation')
     for image_id, label in tqdm(img2label.items()):
         im = image_id + '.jpg'
-        dir_to = os.path.join(cvs_path, 'open-images', label, im)
+        dir_to = os.path.join(cvs_path, 'train', label, im)
         dir_from_full = os.path.join(dir_from, im)
         try:
             os.replace(dir_from_full, dir_to)
@@ -63,7 +63,7 @@ def main():
 
     # Create folder unknown for all images with no labels that are left
     # in oryginal validation folder
-    unknown_dir = os.path.join(cvs_path, 'open-images', 'Unknown')
+    unknown_dir = os.path.join(cvs_path, 'train', 'Unknown')
     try:
         os.makedirs(unknown_dir)
     except FileExistsError:

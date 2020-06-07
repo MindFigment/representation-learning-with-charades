@@ -39,6 +39,19 @@ def visualize_similarities(images, sims, choose_dict, metric, title, show=False,
 
     plt.suptitle('{} similarty \n{}'.format(metric, title), size=60)
     
+
+    # for i in range(per_row):
+    #     axes[0, i].imshow(images[i])
+    #     axes[0, i].axis('off')
+    #     for j in range(per_row):
+    #         axes[j + 1, i].imshow(images[j + per_row])
+    #         axes[j + 1, i].axis('off')
+    #         if choose_dict[i] == j:
+    #             axes[j + 1, i].set_title('{0:.3f}'.format(sims[i, j]), backgroundcolor='lightcoral', size=30)
+    #         else:
+    #             axes[j + 1, i].set_title('{0:.3f}'.format(sims[i, j]), size=30)
+
+
     if save_f:
         # print('Saving {}'.format(save_f))
         plt.savefig(save_f)

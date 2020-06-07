@@ -13,8 +13,8 @@ from PIL import Image
 
 
 @click.command()
-@click.option('--root', '-r', default='/home/stanislaw/datasets/open-images', help='Dir where your data sits')
-@click.option('--output', '-o', default='./handpicked.csv', help='File with hand-picked labeled examples')
+@click.option('--root', '-r', default='/media/STORAGE/DATASETS/open-images/', help='Dir where your data sits')
+@click.option('--output', '-o', default='./csv_files/handpicked.csv', help='File with hand-picked labeled examples')
 def main(root, output):
 
     data_dir = os.path.join(root, 'train')
@@ -211,6 +211,13 @@ def main(root, output):
     context = [''.join(['Context', str(i)]) for i in range(5)]
     source = [''.join(['Source', str(i)]) for i in range(5)]
     columns = [*context, *source, 'Topic', 'Weights']
+
+    handpicked_dir = os.path.join(root, 'hand-picked')
+    try:
+        os.makedirs(handpicked_dir)
+        # print('Created dir: {}'.format(dir_path))
+    except FileExistsError:
+        print('{} already exists!'.format(handpicked_dir))
 
     with open(output, 'w') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=columns)

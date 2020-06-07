@@ -1,132 +1,129 @@
-import os
 import torch
-import torch.utils.data
-from torch import nn, optim
-from torch.autograd import Variable
+import torchvision
+from image_folder_with_paths import ImageFolderWithPaths
 from torch.nn import functional as F
-from torchvision import datasets, transforms
-from torchvision.utils import save_image
-
-
-# https://vxlabs.com/2017/12/08/variational-autoencoder-in-pytorch-commented-and-annotated/
-
-CUDA = True
-SEED = 1
-BATCH_SIZE = 10
-LOG_INTERVAL = 10
-EPOCHS = 10
-
-# connections through the autoencoder bottleneck
-ZDIMS = 20
-
-torch.manual_seed(SEED)
-if CUDA:
-    torch.cuda.manual_seed(SEED)
-
-# DataLoader instances will load tensors directly input GPU memory
-kwargs = {'num_workers': 1, 'pin_memory': True} if CUDA else {}
-
-# Load train data
-# shuffle at every epoch
-train_dataloader = None
-
-
-# Load test data
-# shuffle at every epoch
-test_dataloader = None
+from torch import nn, optim
+import torchvision.transforms as T
+import os
+import numpy as np
 
 
 class VAE(nn.Module):
 
-    def __init__(self):
+    def __init__(self, latent_dim, nf):
         super(VAE, self).__init__()
 
-        ###############
-        ### ENCODER ###
-        ###############
+        self.latent_dim = latent_dim
+        # Size of feature maps
+        self.nf = nf
 
-        # 224 x 224 x 3 input pixels, 400 outputs
-        self.fc1 = nn.Linear(224 * 224 * 3, 400)
-        self.relu = nn.ReLU()
-        self.fc21 = nn.Linear(400, ZDIMS)
-        self.fc22 = nn.Linear(400, ZDIMS)
+        print(self.nf, self.latent_dim)
 
-        ###############
-        ### DECODER ###
-        ###############
+        #####################
+        ### BUILD ENCODER ###
+        #####################
 
-        self.fc3 = nn.Linear(ZDIMS, 400)
-        self.fc4 = nn.Linear(400, 224 * 224 * 3)
-        self.sigmoid = nn.Sigmoid()
+        self.encoder = nn.Sequential(
+            # input: 3 x 224 x 224
+            nn.Conv2d(3, nf, 3, 1, 1),
+            nn.LeakyReLU(0.2),
+            # shape: nf x 224 x 224
+            nn.Conv2d(nf, 2 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: nf x 112 x 112
+            nn.Conv2d(2 * nf, 4 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: (2*nf) x 56 x 56
+            nn.Conv2d(4 * nf, 8 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: (4*nf) x 28 x 28
+            nn.Conv2d(8 * nf, 16 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: (8*ndf) x 14 x 14
+            nn.Conv2d(16 * nf, 32 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: (16*ndf) x 7 x 7
+            nn.Conv2d(32 * nf, 2 * self.latent_dim, 7, 1, 0),
+            nn.LeakyReLU(0.2)
+            # shape: (2*latent_dim) x 1 x 1
+        )
+
+
+        
+
+        #####################
+        ### BUILD DECODER ###
+        #####################
+
+        self.decoder = nn.Sequential(
+            # input: 100 x 1 x 1
+            nn.ConvTranspose2d(self.latent_dim, 32 * nf, 7, 1, 0),
+            nn.LeakyReLU(0.2),
+            # shape: 16 * nf x 7 x 7
+            nn.ConvTranspose2d(32 * nf, 16 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: 8 * nf x 14 x 14
+            nn.ConvTranspose2d(16 * nf, 8 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: 4 * nf x 28 x 28
+            nn.ConvTranspose2d(8 * nf, 4 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: 2 * nf x 56 x 56
+            nn.ConvTranspose2d(4 * nf, 2 * nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: nf x 112 x 112
+            nn.ConvTranspose2d(2 * nf, nf, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            # shape: nf x 224 x 224
+            nn.ConvTranspose2d(nf, 3, 3, 1, 1),
+            nn.Sigmoid()
+            # shape: 3 x 224 x 224
+        )
 
     
-    def encode(self, x: Variable) -> (Variable, Variable):
+    def encode(self, x):
         """
-        Input vector x-> fully connected 1 -> ReLu ->
-        (fully connected 21, fully connected 22)
+        Encodes the input by passing through the encoder network
+        and returns the latent code.
 
-        Parameters
-        ----------
-        x: [None, 224 * 224 * 3]
+        Args:
+            x: (Tensor) Input tensor to decoder [None, 3, 224, 224]
 
-        Returns
-        -------
-
-        (mu, logvar): zdims mean units one for each latent dimension, zdims
-            variance units one for each latent dimension
+        Returns:
+            (Tensor tuple) Tuple of tensors (mu, logvar)
         
         """
 
-        h1 = self.relu(self.fc1(x))
-        return self.fc21(h1), self.fc22(h1)
+        encoded = self.encoder(x)
+        # encoded = torch.squeeze(encoded)
+        mu = encoded[:, :self.latent_dim, :, :]
+        logvar = encoded[: ,self.latent_dim:, :, :]
+        return mu, logvar
+
+
+    def decode(self, latent_code):
+        latent_code = latent_code.view(-1, self.latent_dim, 1, 1)
+        return self.decoder(latent_code)
 
     
-    def reparameterize(self, mu: Variable, logvar: Variable) -> Variable:
+    def reparameterize(self, mu, logvar):
         """
-        THE REPARAMETERIZATION IDEA
+        Reparameterization trick
 
-        For each training sample:
+        Args:
+            mu: (Tensor)  Mean matrix [None, latent_dim]
+            logvar: (Tensor) Variance matrix [None, latent_dim]
 
-            - take current learned mu, stddev for each of the ZDIMS
-              dimensions and draw a random sample from that distribution
-            - the whole network is trained so that these randomly drawn 
-              samples decode to output that looks like the input
-            - which will mean that std, mu will be learned
-              *distributions* that correctly encode the inputs
-            - due to the additional KLD term the distribution will
-              tend to unit Gaussians
-
-        Parameters
-        ----------
-        mu: [None, ZDIMS] -> mean matrix
-        logvar: [None, ZDIMS] -> variance matrix
-
-        Returns
-        -------
-        During training returns random sample from the learned ZDIMS-dimensional
-        normal distribution.
-        During inference returns its mean.
+        Returns:
+            (Tensor) if train: sample from N(mu, std); if test: mu
 
         """
 
         if self.training:
-            # multiply log variance with 0.5, then in-place exponent
-            # yielding the standard devation
-            std = logvar.mul(0.5).exp_()
-            # std.data is the [None, ZDIMS] tensor that is wrapped by std
-            # so eps is [None, ZDIMS] with all elemennts drawn from a mean 0
-            # and stddev 1 normal distribution that is batch of samples
-            # of random ZDIMS-float vectors
-            eps = Variable(std.data.new(std.size()).normal_())
-            # sample from a normal distribution with standard
-            # devation = std and mean = mu b multiplying mean 0
-            # stddev 1 samle with desired std and mu, see
-            # https://stats.stackexchange.com/a/16338
-            # so we have a batch of random ZDIMS-float vectors
-            # sampled from normal distribution with learned
-            # std and mu for the current input
-            return eps.mul(std).add_(mu)
-
+            std = torch.exp(0.5 * logvar)
+            # std = logvar.mul(0.5).exp_()
+            eps = torch.randn_like(std)
+            return eps * std + mu
         else:
             # During inference, we simply split out the mean of the
             # learned distribution for the current input. We could
@@ -134,122 +131,86 @@ class VAE(nn.Module):
             # course has the highest probability
             return mu
 
-        
-    def decode(self, z: Variable) -> Variable:
-        h3 = self.relu(self.fc3(z))
-        return self.sigmoid(self.fc4(h3))
+    
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        latent_code = self.reparameterize(mu, logvar)
+        # print('Latent code: {}, \n{}'.format(latent_code, latent_code.size()))
+        return self.decode(latent_code), mu, logvar
 
     
-    def forward(self, x: Variable) -> (Variable, Variable, Variable):
-        mu, logvar = self.encode(x.view(-1, 224 * 224 * 3))
-        z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
+    def get_feature_extractor(self):
+        extractor = lambda x: self.encoder(x)[:, :self.latent_dim, :, :]
+        return extractor
+
+    
+    def get_encoder(self):
+        return self.encoder
 
 
-model = VAE()
-if CUDA:
-    model.cuda()
+    def loss_function(self, recon_x, x, mu, logvar):
+        n = recon_x.size(0)
+        bce = F.binary_cross_entropy(recon_x, x, reduction='sum') / n
+        # bce = F.mse_loss(recon_x, x)
+        # kld = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp()))
+        kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / n
+        # bce tries to make our reconstruction as accurate as possible
+        # kld tries to push the distributions as close as possible to unit Gaussian
+        # print('BCE: {}'.format(bce))
+        # print('KLD: {}'.format(kld))
+        return bce + kld, bce, kld
 
 
-def loss_function(recon_x, x, mu, logvar) -> Variable:
-    # how well do input x and output recon_x agree?
-    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 224 * 224 * 3))
 
-    # KLD is Kullback-Leibler divergence: how much does one learned
-    # distribution deviate from another, in this specific case the
-    # learned distribution from the unit Gaussian
+if __name__ == '__main__':
+    transform = torchvision.transforms.ToTensor()
 
-    # see Appendix B from VAE paper:
-    # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
-    # https://arxiv.org/abs/1312.6114
-    # - D_{KL} = 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-    # note the negative D_{KL} in appendix B of the paper
-    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    # Normalize by same number of elements as in reconstruction
-    KLD /= BATCH_SIZE * (224 * 224 * 3)
+    transform = T.Compose([T.Resize(size=256),
+                           T.CenterCrop(size=224),
+                           T.ToTensor()
+    ])
 
-    # BCE tries to make our reconstruction as accurate as possible
-    # KLD tries to push the distributions as close as possible to unit Gaussian
-    return BCE + KLD
+    data_dir  = '/media/STORAGE/DATASETS/open-images/train/'
+    dataset = ImageFolderWithPaths(data_dir, transform)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=128)
+    iter_dataloader = iter(dataloader)
+    batch = next(iter_dataloader)
+    img = batch[0]
 
-
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-
-def train(epoch):
-    # toogle model to train mode
+    model = VAE()
     model.train()
-    train_loss = 0
-    for batch_idx, batch in enumerate(train_dataloader):
-        data = Variable(batch)
-        if CUDA:
-            data = data.cuda()
-        optimizer.zero_grad()
 
-        # push whole batch of data through VAE.forward() to get recon_loss
-        recon_batch, mu, logvar = model(data)
-        # calculate scalar loss
-        loss = loss_function(recon_batch, data, mu, logvar)
-        # calculate the gradient of the loss w.r.t the graph leaves
-        # i.e input variables
-        loss.backward()
-        train_loss += loss.data[0]
-        optimizer.step()
-        if batch_idx % LOG_INTERVAL == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:0.6f}'.format(
-                epoch, batch_idx * len(data), len(train_dataloader.dataset),
-                100. * batch_idx / len(train_dataloader),
-                loss.data[0] / len(data)
-            ))
-            
-    print('====> Epoch: {} Average loss: {:.4f}'.format(
-        epoch, train_loss / len(train_dataloader.dataset)
-    ))
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.999))
 
+    result, mu, logvar = model(img)
 
-def test(epoch):
-    # toggle model to test/inference mode
-    model.eval()
-    test_loss = 0
+    print(model.training)
 
-    # each data is of BATCH_SIZE samples
-    for i, batch in enumerate(test_dataloader):
-        if CUDA:
-            # make sure this lives on the GPU
-            data = batch.cuda()
-        
-        # we're only going to infer, so no autograd at all required: volatile=True
-        data = Variable(data, volatile=True)
-        recon_batch, mu, logvar = model(data)
-        test_loss += loss_function(recon_batch, data, mu, logvar).data[0]
-        if i == 0:
-            n = min(data.size(0), 8)
-            # for the first batch of the epoch, show the first 8 input images
-            # with rightt below them the reconstructed output digits
-            comparison = torch.cat([data[:n],
-                                    recon_batch.view(BATCH_SIZE, 3, 224, 224)[:n]])
-            save_image(comparison.data.cpu(),
-                       'results/reconstructions/reconstruction_' + str(epoch) + '.png', nrow=n)
+    loss = model.loss_function(result, img, mu, logvar)
 
-    test_loss /= len(test_dataloader.dataset)
-    print('=====> Test set loss: {:.4f}'.format(test_loss))
+    print(len(list(model.parameters())))
 
-                       
+    loss.backward()
+    l = loss.item()
+    optimizer.step()
+    optimizer.zero_grad()
+    print(l)
+    print(loss.item())
 
-for epoch in range(1, EPOCHS + 1):
-    train(epoch)
-    test(epoch)
+    result, mu, logvar = model(img)
+    loss = model.loss_function(result, img, mu, logvar)
+    loss.backward()
+    l = loss.item()
+    optimizer.step()
+    print(l)
+    optimizer.zero_grad()
 
-    # 64 sets of random ZDIMS-float vectors, i.e 64 locations
-    # in latent space
-    sample = Variable(torch.randn(64, ZDIMS))
-    if CUDA:
-        sample = sample.cuda()
-    sample = model.decode(sample).cpu()
+    result, mu, logvar = model(img)
+    loss = model.loss_function(result, img, mu, logvar)
+    loss.backward()
+    l = loss.item()
+    optimizer.step()
+    optimizer.zero_grad()
+    print(l)
 
-    # save out as an 8x8 matrix
-    # this will give you a visual idea of how well latent space can generate things
-    save_image(sample.data.view(64, 3, 224, 224),
-               'results/samples/sample_' + str(epoch) + '.png')
-
-
+    # print(result[0].size())

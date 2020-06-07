@@ -8,9 +8,9 @@ from tqdm import tqdm
 from utils import visualize_labels
 
 @click.command()
-@click.option('--root', '-r', default='/home/stanislaw/datasets/open-images', help='Dir where your data sits')
-@click.option('--csv_file', '-csv', default='./validation_labeled.csv', help='Csv file with correct labels')
-@click.option('--output_dir', '-od', default='/home/stanislaw/datasets/open-images/validation', help='Dir with visualizations with repaired labels')
+@click.option('--root', '-r', default='/media/STORAGE/DATASETS/open-images/', help='Dir where your data sits')
+@click.option('--csv_file', '-csv', default='./csv_files/validation_labeled.csv', help='Csv file with correct labels')
+@click.option('--output_dir', '-od', default='/media/STORAGE/DATASETS/open-images/validation', help='Dir with visualizations with repaired labels')
 def main(root, csv_file, output_dir):
     data_dir = os.path.join(root, 'train')
 

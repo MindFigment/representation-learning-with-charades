@@ -11,6 +11,7 @@ import csv
 import numpy as np
 import click
 from tqdm import tqdm
+import os
 
 @torch.no_grad()
 # @click.command()
@@ -29,7 +30,7 @@ from tqdm import tqdm
 # @click.option('--save_test', default='./vis_test/check-cosine', help='Do you want to visualize test data')
 def validate(per_row=5,
              metric='cosine',
-             model_name='alexnet',
+             model='alexnet',
              drop_last=2,
              root_dir='/home/stanislaw/datasets/open-images/train',
              csv_test='./csv_files/handpicked.csv',
@@ -70,21 +71,19 @@ def validate(per_row=5,
         'num_workers': 1
     }
 
-    # dataset = ImageFolder(**dataset_params)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     test_dataset = CharadesVal(**test_dataset_params)
     val_dataset = CharadesVal(**val_dataset_params)
 
-    # iter_data_loader = iter(DataLoader(dataset, **dataloader_params))
-    # iter_data_loader = iter(DataLoader(dataset, **dataloader2_params))
     test_dataloader = DataLoader(test_dataset, **test_dataloader_params)
     val_dataloader = DataLoader(val_dataset, **val_dataloader_params)
 
-    if model_name in ['alexnet', 'resnet50', 'inception', 'vgg16']:
-        model = load_pretrained(model_name, drop_last=drop_last)
-    else:
-        raise ValueError('For now we do not have our own model')
+    if type(model) is str and model in ['alexnet', 'resnet50', 'inception', 'vgg16']:
+        model = load_pretrained(model, drop_last=drop_last)
+    # else:
+    #     raise ValueError('For now we do not have our own model')
 
-    
     if algorithm not in ['choose_dict', 'choose_dict2', 'choose_dict3']:
         raise ValueError('Wrong algorithm {}!'.format(algorithm))
     else:
@@ -94,6 +93,18 @@ def validate(per_row=5,
             get_answer_dict = choose_dict2
         else:
             get_answer_dict = choose_dict3
+
+    try:
+        vis_val_dir = os.path.join(*vis_val.split('/')[:-1])
+        os.makedirs(vis_val_dir)
+    except FileExistsError:
+        print('{} already exists!'.format(vis_val_dir))
+
+    try:
+        vis_test_dir = os.path.join(*vis_test.split('/')[:-1])
+        os.makedirs(vis_test_dir)
+    except FileExistsError:
+        print('{} already exists!'.format(vis_test_dir))
 
     
     ######################
@@ -108,7 +119,8 @@ def validate(per_row=5,
         # Batch is always of size: (1, 10, 3, 224, 224) so we take batch[0] to get size (10, 3, 224, 224)
         # batch = batch.view(-1, *batch.size()[-3:])
         for example in batch:
-            features = model(example)
+            example = example.to(device)
+            features = model(example).cpu()
             sims = compute_similarities(features, metric=metric)
 
             answer_dict = get_answer_dict(sims)
@@ -122,7 +134,7 @@ def validate(per_row=5,
                 # Normalize images before plotting 
                 batch = norm(example)
                 title = title_from_dict(answer_dict)
-                visualize_similarities(example, sims, answer_dict, metric=metric, title=title, show=False, save_f=vis_val + str(i))
+                visualize_similarities(example.cpu(), sims, answer_dict, metric=metric, title=title, show=False, save_f=vis_val + str(i))
             i += 1
 
     acc_val = correct_val / n_val
@@ -137,7 +149,8 @@ def validate(per_row=5,
     for batch, topic, choice in tqdm(test_dataloader):
         # Batch is always of size: (1, 10, 3, 224, 224) so we take batch[0] to get size (10, 3, 224, 224)
         batch = batch.view(-1, *batch.size()[-3:])
-        features = model(batch)
+        batch = batch.to(device)
+        features = model(batch).cpu()
         sims = compute_similarities(features, metric=metric)
 
         # answer = choose_answer(sims, choice)
@@ -150,7 +163,7 @@ def validate(per_row=5,
             # Normalize images before plotting 
             batch = norm(batch)
             title = title_from_dict(answer_dict)
-            visualize_similarities(batch, sims, answer_dict, metric=metric, title=title, show=False, save_f=vis_test + str(i))
+            visualize_similarities(batch.cpu(), sims, answer_dict, metric=metric, title=title, show=False, save_f=vis_test + str(i))
         i += 1
 
     acc_test = correct_test / n_test
@@ -163,7 +176,7 @@ if __name__ == '__main__':
     params = {
         'per_row': 5,
         'metric': 'cosine',
-        'model_name': 'resnet50',
+        'model': 'resnet50',
         'drop_last': 2,
         'root_dir': '/home/stanislaw/datasets/open-images/train',
         'csv_test': './csv_files/handpicked.csv',

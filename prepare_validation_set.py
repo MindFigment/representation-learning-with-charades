@@ -14,9 +14,9 @@ from tqdm import tqdm
 @click.command()
 @click.option('--mode', '-m', type=click.Choice(['a', 'w'], case_sensitive=False), default='a', help='Create new or append to existing validation file')
 @click.option('--num', '-n', default=10, help='Number of examples to generate')
-@click.option('--output', '-o', default='./validation.csv', help='File with labeled examples')
+@click.option('--output', '-o', default='./csv_files/validation_labeled.csv', help='File with labeled examples')
 @click.option('--seed', '-s', default=0, help='Set seed if you want to get reproducible examples, by default set to 0. If you want random examples every time set seed to -1')
-@click.option('--root', '-r', default='/home/stanislaw/datasets/open-images', help='Dir where your data sits')
+@click.option('--root', '-r', default='/media/STORAGE/DATASETS/open-images/', help='Dir where your data sits')
 def main(mode, num, output, seed, root):
     if seed != -1:
         torch.manual_seed(seed)
