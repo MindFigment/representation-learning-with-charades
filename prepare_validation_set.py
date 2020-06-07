@@ -85,7 +85,8 @@ def main(mode, num, output, seed, root):
             row_dict = dict(zip(columns, row))
             writer.writerow(row_dict)
             
-            save_f = os.path.join(root, 'validation', 'example' + str(i + 1))
+            # save_f = os.path.join(root, 'validation', 'example' + str(i + 1))
+            save_f = os.path.join('/home/mszmelcz/Documents/representation-learning-with-charades', 'vis_game', 'example' + str(i + 1))
 
             # Create image of our particular examples to help us visually inspect it
             # and decide upon correct label we want to assign to it

@@ -3,11 +3,11 @@ from scipy.spatial.distance import cdist
 import numpy as np
 import torch
 import torchvision.transforms as T
-<<<<<<< HEAD
+
 from vae import VAE
 
 
-def get_model(model_name, drop_last=2):
+def get_model(model_name='pretrained', drop_last=2):
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if model_name == 'vae':
         model = VAE(latent_dim=200, nf=128)#.to(device)
@@ -16,15 +16,6 @@ def get_model(model_name, drop_last=2):
         model = models.resnet50(pretrained=True)
         feature_extractor = torch.nn.Sequential(*(list(model.children())[:-drop_last]))
         feature_extractor.eval()
-=======
-
-
-
-def get_model(drop_last=2):
-    model = models.resnet50(pretrained=True)
-    feature_extractor = torch.nn.Sequential(*(list(model.children())[:-drop_last]))
-    feature_extractor.eval()
->>>>>>> ba26e9096ca33cef0daec8fefd0a95774d039ad3
     return feature_extractor
 
 
@@ -36,8 +27,7 @@ def compute_similarities(features, metric='cosine'):
     return sims
 
 
-<<<<<<< HEAD
-def get_transform(model_name='vae'):
+def get_transform(model_name='pretrained'):
     if model_name == 'vae':
         image_transform = T.Compose([T.Resize(size=256),
                                      T.CenterCrop(size=224),
@@ -110,35 +100,9 @@ def choose_dict3(sims, temperature=0.1):
 @torch.no_grad()
 def inference(images, model, choice, metric, alg, transform):
     # transform = get_transform('pretrained')
-=======
-def get_pretrained_transform():
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
-    image_transform = T.Compose([T.Resize(size=256),
-                                 T.CenterCrop(size=224),
-                                 T.ToTensor(),
-                                 T.Normalize(mean=mean, std=std)
-    ])
-    return image_transform
-
-
-def choose_answer(sims, choice):
-    min_ = np.argmin(sims[:, choice])
-    return min_
-
-
-@torch.no_grad()
-def inference(images, model, choice, metric):
-    transform = get_pretrained_transform()
->>>>>>> ba26e9096ca33cef0daec8fefd0a95774d039ad3
     images = [transform(images) for images in images]
     images = torch.stack(images)
     features = model(images)
     sims = compute_similarities(features, metric=metric)
-<<<<<<< HEAD
     answer_dict = alg(sims)
     return answer_dict[choice]
-=======
-    answer = choose_answer(sims, choice)
-    return answer
->>>>>>> ba26e9096ca33cef0daec8fefd0a95774d039ad3
