@@ -11,7 +11,8 @@ import ml  # plik Maksa
 
 # os.chdir('../Wszystkie obrazki')  # katalog roboczy
 # os.chdir('/home/stanislaw/datasets/open-images/train/Human body')
-path = '/media/STORAGE/DATASETS/open-images/train/'
+path = '/home/stanislaw/datasets/open-images/train'
+# path = '/media/STORAGE/DATASETS/open-images/train/'
 os.chdir(path)
 # sciezki = [sciezka for sciezka in os.listdir('.')]  # ścieżki do obrazków
 
@@ -21,7 +22,7 @@ for p, _, f in os.walk('.'):
         sciezki.append(os.path.join(p, file))
 
 model_name = 'pretrained'
-algorithm = 1
+algorithm = 3
 
 model = ml.get_model(model_name)
 transform = ml.get_transform(model_name)
